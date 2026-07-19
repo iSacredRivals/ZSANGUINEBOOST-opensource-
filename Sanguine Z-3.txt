@@ -1,0 +1,123 @@
+
+
+local DROP_TO_FPS = 20
+local LAG_DURATION = 0.43
+
+local SANGUINE_ANIMATION_ID = "rbxassetid://15682737850" -- Foul Strike animation id, confirm if changed by game update!
+
+local rs = game:GetService("RunService")
+local plrs = game:GetService("Players")
+local lp = plrs.LocalPlayer
+local uis = game:GetService("UserInputService")
+
+-- GUI Setup (same as before)
+local gui = Instance.new("ScreenGui")
+gui.Name = "cupids script"
+gui.ResetOnSpawn = false
+gui.Parent = (get_hidden_gui and get_hidden_gui()) or game.CoreGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 90, 0, 42)
+frame.Position = UDim2.new(0.37, 0, 0.26, 0)
+frame.BackgroundColor3 = Color3.fromRGB(75,30,135)
+frame.Active = true
+frame.Draggable = true
+frame.BorderSizePixel = 0
+frame.ClipsDescendants = true
+frame.Parent = gui
+
+local uicorner = Instance.new("UICorner", frame)
+uicorner.CornerRadius = UDim.new(0,12)
+
+local zBtn = Instance.new("TextButton")
+zBtn.Size = UDim2.new(0, 40, 0, 30)
+zBtn.Position = UDim2.new(0, 12, 0, 6)
+zBtn.BackgroundColor3 = Color3.fromRGB(210,140,255)
+zBtn.Text = "Z"
+zBtn.TextSize = 18
+zBtn.TextColor3 = Color3.new(1,1,1)
+zBtn.Font = Enum.Font.GothamBold
+zBtn.BorderSizePixel = 0
+zBtn.Parent = frame
+
+local zcorner = Instance.new("UICorner", zBtn)
+zcorner.CornerRadius = UDim.new(0,8)
+
+local close = Instance.new("TextButton")
+close.Size = UDim2.new(0, 18, 0, 18)
+close.Position = UDim2.new(1, -22, 0, 3)
+close.BackgroundColor3 = Color3.fromRGB(255,90,120)
+close.Text = "X"
+close.TextSize = 13
+close.Font = Enum.Font.GothamBold
+close.TextColor3 = Color3.new(1,1,1)
+close.BorderSizePixel = 0
+close.ZIndex = 2
+close.Parent = frame
+
+local closeCorner = Instance.new("UICorner", close)
+closeCorner.CornerRadius = UDim.new(1,0)
+
+close.MouseButton1Click:Connect(function()
+    gui:Destroy()
+end)
+
+-- FPS Drop Lag, only when Sanguine Z is actually played
+local lagBusy = false
+local function dropFPS()
+    if lagBusy then return end
+    lagBusy = true
+    local stop = tick() + LAG_DURATION
+    local interval = 1 / DROP_TO_FPS
+    local con
+    con = rs.RenderStepped:Connect(function()
+        if tick() > stop then
+            if con then con:Disconnect() end
+            return
+        end
+        local now = tick()
+        while tick() - now < interval do end
+    end)
+    task.wait(0.10)
+    lagBusy = false
+end
+
+-- Detect Sanguine Foul Strike activation by AnimationId playing
+local function connectSanguineWatcher()
+    local char = lp.Character or lp.CharacterAdded:Wait()
+    local hum = char:WaitForChild("Humanoid")
+    -- Disconnect old connections if character respawns
+    if hum:FindFirstChild("__CUPIDS_SANGUINE") then
+        hum:FindFirstChild("__CUPIDS_SANGUINE"):Destroy()
+    end
+    local flag = Instance.new("BoolValue")
+    flag.Name = "__CUPIDS_SANGUINE"
+    flag.Parent = hum
+    hum.AnimationPlayed:Connect(function(anim)
+        if tostring(anim.Animation.AnimationId):find(SANGUINE_ANIMATION_ID) then
+            dropFPS()
+        end
+    end)
+end
+
+lp.CharacterAdded:Connect(function()
+    task.wait(1)
+    connectSanguineWatcher()
+end)
+if lp.Character then connectSanguineWatcher() end
+
+-- [Optional] Still allow Z key or GUI press as manual trigger (for backup & fun)
+uis.InputBegan:Connect(function(i, gpe)
+    if gpe then return end
+    if i.KeyCode == Enum.KeyCode.Z then
+        dropFPS()
+    end
+end)
+zBtn.MouseButton1Click:Connect(dropFPS)
+
+-- Remove duplicate GUIs
+for _,v in pairs(game.CoreGui:GetChildren()) do
+    if v:IsA("ScreenGui") and v ~= gui and v.Name == gui.Name then
+        pcall(function() v:Destroy() end)
+    end
+end
