@@ -1,16 +1,24 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local camera = workspace.CurrentCamera
 
--- Configuración del boost (AQUÍ ES DONDE SE AUMENTA LA DISTANCIA)
-local velocityPower = 400   -- Antes era 150. Cuanto más alto, más rápido irá.
-local boostDuration = 0.9   -- Antes era 0.5. Cuanto más alto, más tiempo se mantendrá la velocidad.
+-- Configuración del boost
+local velocityPower = 400   
+local boostDuration = 0.9   
+
+-- Configuración del Fake Lag
+local DROP_TO_FPS = 20
+local LAG_DURATION = 0.43
+local SANGUINE_ANIMATION_ID = "rbxassetid://15682737850" -- Confirma si el ID cambia en updates
 
 local lagGui = nil
+local lagBusy = false
 
+-- Limpiar GUI anterior si existe
 local function destroyLagGui()
     if lagGui and lagGui.Parent then
         lagGui:Destroy()
@@ -18,6 +26,30 @@ local function destroyLagGui()
     end
 end
 
+-- Función de Fake Lag (FPS Drop)
+local function dropFPS()
+    if lagBusy then return end
+    lagBusy = true
+    
+    local stop = tick() + LAG_DURATION
+    local interval = 1 / DROP_TO_FPS
+    local con
+    
+    con = RunService.RenderStepped:Connect(function()
+        if tick() > stop then
+            if con then con:Disconnect() end
+            return
+        end
+        local now = tick()
+        -- Bucle para congelar los frames intencionalmente
+        while tick() - now < interval do end
+    end)
+    
+    task.wait(0.10)
+    lagBusy = false
+end
+
+-- Función de Boost (Velocidad)
 local function doBoost()
     local character = player.Character
     if not character then return end
@@ -31,7 +63,7 @@ local function doBoost()
     att.Parent = hrp
 
     local lv = Instance.new("LinearVelocity")
-    lv.MaxForce = math.huge -- Se cambió a math.huge para asegurar fuerza infinita
+    lv.MaxForce = math.huge 
     lv.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
     lv.VectorVelocity = dir * velocityPower
     lv.Attachment0 = att
@@ -43,11 +75,16 @@ local function doBoost()
     end)
 end
 
+-- Lógica principal al presionar el botón o la tecla
 local function activateButtonVisual(zBtn)
     if zBtn:GetAttribute("Cooldown") then return end
     zBtn:SetAttribute("Cooldown", true)
     
+    -- Ejecutar ambos: Boost y Fake Lag
     doBoost()
+    dropFPS()
+    
+    -- Efectos visuales del botón
     zBtn.Text = "!"
     zBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 80)
     
@@ -58,6 +95,28 @@ local function activateButtonVisual(zBtn)
     zBtn:SetAttribute("Cooldown", false)
 end
 
+-- Detector de animación para el Fake Lag automático
+local function connectSanguineWatcher()
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hum = char:WaitForChild("Humanoid")
+    
+    -- Limpiar flag viejo si el personaje respawnea
+    if hum:FindFirstChild("__CUPIDS_SANGUINE") then
+        hum:FindFirstChild("__CUPIDS_SANGUINE"):Destroy()
+    end
+    
+    local flag = Instance.new("BoolValue")
+    flag.Name = "__CUPIDS_SANGUINE"
+    flag.Parent = hum
+    
+    hum.AnimationPlayed:Connect(function(anim)
+        if tostring(anim.Animation.AnimationId):find(SANGUINE_ANIMATION_ID) then
+            dropFPS()
+        end
+    end)
+end
+
+-- Creación de la interfaz
 local function createLagGui()
     destroyLagGui()
     local gui = Instance.new("ScreenGui", playerGui)
@@ -83,10 +142,12 @@ local function createLagGui()
     zBtn.Font = Enum.Font.GothamBold
     Instance.new("UICorner", zBtn).CornerRadius = UDim.new(0, 8)
 
+    -- Evento de Clic en la GUI
     zBtn.MouseButton1Click:Connect(function()
         activateButtonVisual(zBtn)
     end)
 
+    -- Evento de Tecla Z
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if input.KeyCode == Enum.KeyCode.Z then
@@ -95,4 +156,11 @@ local function createLagGui()
     end)
 end
 
+-- Inicializar sistemas
+player.CharacterAdded:Connect(function()
+    task.wait(1)
+    connectSanguineWatcher()
+end)
+
+if player.Character then connectSanguineWatcher() end
 createLagGui()
